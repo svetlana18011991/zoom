@@ -1,1 +1,210 @@
 
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Шкатулка интерактивов: Египетская Зума</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #e6c280; /* Цвет египетского песка */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            margin-top: 20px;
+        }
+        canvas {
+            background-color: #d4a373;
+            border: 4px solid #8b5a2b;
+            border-radius: 10px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+        /* Стили для модального окна с задачей */
+        #questionModal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border: 4px solid #d4af37; /* Золотая рамка */
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            z-index: 10;
+            width: 300px;
+        }
+        #questionModal h2 { margin-top: 0; color: #333; }
+        .answer-btn {
+            display: block;
+            width: 100%;
+            margin: 10px 0;
+            padding: 10px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .answer-btn:hover { background: #45a049; }
+        #helpBtn {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: #ff9800;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 18px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #helpBtn:hover { background: #e68a00; }
+    </style>
+</head>
+<body>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        
+        <div id="questionModal">
+            <h2>Помощь Богов!</h2>
+            <p id="questionText">Вопрос появится здесь</p>
+            <div id="answersContainer"></div>
+        </div>
+    </div>
+
+    <button id="helpBtn" onclick="triggerHelp()">Помощь Богов (Пауза + Задача)</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const modal = document.getElementById('questionModal');
+        const questionText = document.getElementById('questionText');
+        const answersContainer = document.getElementById('answersContainer');
+
+        let isPaused = false;
+        let score = 0;
+
+        // База математических задач
+        const mathQuestions = [
+            { q: "Решите уравнение: 5x - 3 = 12", options: ["2", "3", "4"], correct: 1 },
+            { q: "Площадь квадрата равна 64. Чему равна его сторона?", options: ["8", "16", "32"], correct: 0 },
+            { q: "Найдите значение: 2 в 4 степени", options: ["8", "12", "16"], correct: 2 },
+            { q: "Вычислите корень из 144", options: ["12", "14", "16"], correct: 0 }
+        ];
+
+        // Игровые объекты
+        let angleOffset = 0; // Для движения шариков
+
+        function drawGame() {
+            if (isPaused) return; // Останавливаем отрисовку при паузе
+
+            // Очистка экрана
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Рисуем египетский фон (простая пирамида для атмосферы)
+            ctx.fillStyle = "#c2955d";
+            ctx.beginPath();
+            ctx.moveTo(100, 600);
+            ctx.lineTo(400, 200);
+            ctx.lineTo(700, 600);
+            ctx.fill();
+
+            // Рисуем дорожку для шариков
+            ctx.beginPath();
+            ctx.arc(400, 300, 200, 0, Math.PI * 2);
+            ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
+            ctx.lineWidth = 40;
+            ctx.stroke();
+
+            // Рисуем шарики на орбите
+            angleOffset += 0.01;
+            const colors = ['#e63946', '#457b9d', '#2a9d8f', '#e9c46a'];
+            for (let i = 0; i < 15; i++) {
+                let angle = angleOffset + (i * 0.4);
+                let x = 400 + Math.cos(angle) * 200;
+                let y = 300 + Math.sin(angle) * 200;
+
+                ctx.beginPath();
+                ctx.arc(x, y, 15, 0, Math.PI * 2);
+                ctx.fillStyle = colors[i % colors.length];
+                ctx.fill();
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            // Рисуем лягушку (зеленый круг с глазами в центре)
+            ctx.fillStyle = "#2a9d8f";
+            ctx.beginPath();
+            ctx.arc(400, 300, 40, 0, Math.PI * 2);
+            ctx.fill();
+            // Глаза
+            ctx.fillStyle = "white";
+            ctx.beginPath(); ctx.arc(385, 285, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(415, 285, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = "black";
+            ctx.beginPath(); ctx.arc(385, 285, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(415, 285, 4, 0, Math.PI * 2); ctx.fill();
+
+            // Счет
+            ctx.fillStyle = "#fff";
+            ctx.font = "24px Arial";
+            ctx.fillText("Очки: " + score, 20, 40);
+
+            requestAnimationFrame(drawGame);
+        }
+
+        // Логика вызова задачи
+        function triggerHelp() {
+            if (isPaused) return;
+            isPaused = true;
+            
+            // Выбираем случайную задачу
+            const randomQ = mathQuestions[Math.floor(Math.random() * mathQuestions.length)];
+            
+            questionText.innerText = randomQ.q;
+            answersContainer.innerHTML = "";
+            
+            randomQ.options.forEach((opt, index) => {
+                const btn = document.createElement("button");
+                btn.className = "answer-btn";
+                btn.innerText = opt;
+                btn.onclick = () => checkAnswer(index, randomQ.correct);
+                answersContainer.appendChild(btn);
+            });
+
+            modal.style.display = "block";
+        }
+
+        // Проверка ответа
+        function checkAnswer(selectedIndex, correctIndex) {
+            if (selectedIndex === correctIndex) {
+                alert("Верно! Боги благосклонны к вам. +100 очков!");
+                score += 100;
+                // Здесь в будущем можно добавить логику отката шариков назад
+            } else {
+                alert("Неверно. Шарики ускоряются!");
+                // Здесь логика наказания
+            }
+            
+            modal.style.display = "none";
+            isPaused = false;
+            requestAnimationFrame(drawGame); // Возобновляем игру
+        }
+
+        // Запуск игры
+        drawGame();
+    </script>
+</body>
+</html>
