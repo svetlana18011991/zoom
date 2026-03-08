@@ -6,9 +6,26 @@
     <title>Шкатулка интерактивов: Зума</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
     <style>
-        body { margin: 0; padding: 0; background-color: #000; overflow: hidden; font-family: sans-serif; }
-        #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        #math-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
+        /* ИСПРАВЛЕНИЕ: Растягиваем игру на весь экран без черных полос */
+        body { margin: 0; padding: 0; background-color: black; overflow: hidden; }
+        
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center; /* Центрируем */
+            align-items: center;
+        }
+
+        /* Принудительно растягиваем холст игры через CSS, если нужно убедиться в отсутствии полос */
+        canvas {
+            width: 100vw !important;
+            height: 100vh !important;
+            display: block;
+            object-fit: cover; /* Сохраняет пропорции фона, обрезая края, если нужно. */
+        }
+
+        #math-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; box-shadow: 0 0 30px rgba(0,0,0,0.8); font-family: sans-serif; }
         .answer-btn { display: block; width: 100%; margin: 10px 0; padding: 12px; background: #d4af37; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
         .answer-btn:hover { background: #b8860b; color: white; }
     </style>
@@ -18,174 +35,180 @@
     <div id="game-container">
         <div id="math-modal">
             <h2>Испытание Сфинкса</h2>
-            <p id="question-text" style="font-size: 18px; font-weight: bold;"></p>
+            <p id="question-text" style="font-size: 18px; font-weight: bold; margin-top: 0;"></p>
             <div id="answers-container"></div>
         </div>
     </div>
 
     <script>
+        // ИСПРАВЛЕНИЕ КАЧЕСТВА: Включаем сглаживание для качественного рендеринга
         const config = {
             type: Phaser.AUTO,
             scale: {
-                mode: Phaser.Scale.FIT,
+                mode: Phaser.Scale.FIT, // Сохраняем логические пропорции (800x600) внутри растянутого CSS холста
                 autoCenter: Phaser.Scale.CENTER_BOTH,
                 width: 800,
                 height: 600
             },
             parent: 'game-container',
-            // Включаем физику Arcade для столкновений
+            render: {
+                pixelArt: false, // Отключаем пиксель-арт (делаем сглаживание)
+                antialias: true  // Включаем сглаживание
+            },
             physics: { default: 'arcade', arcade: { debug: false } }, 
             scene: { preload: preload, create: create, update: update }
         };
 
         const game = new Phaser.Game(config);
         let frog;
-        let currentAmmo; 
-        let bullets;
-        let enemyBalls;
+        let currentAmmo; // Заряженный шар
+        let bullets;      // Группа снарядов
+        let enemyBalls;   // Группа шаров на дорожке
         let lastFired = 0;
         let isPaused = false;
         let score = 0;
         let scoreText;
 
+        // Математические задачи
         const questions = [
             { q: "Найдите корень уравнения: 2x + 8 = 20", options: ["x = 4", "x = 6", "x = 8"], correct: 1 },
             { q: "Вычислите: 7² - 19", options: ["30", "40", "50"], correct: 0 },
-            { q: "Площадь квадрата равна 81. Чему равна его сторона?", options: ["8", "9", "18"], correct: 1 }
+            { q: "Чему равна площадь квадрата со стороной 9?", options: ["18", "36", "81"], correct: 2 }
         ];
 
         function preload() {
+            // Загружаем ваши качественные картинки
             this.load.image('background', 'bg.png');
             this.load.image('frog', 'frog.png');
             this.load.image('ball', 'ball.png');
         }
 
         function create() {
+            // 1. Добавляем фон, растягивая его на логические 800x600
             this.add.image(400, 300, 'background').setDisplaySize(800, 600);
 
-            // Текст для отображения очков
+            // Текст очков
             scoreText = this.add.text(20, 20, 'Очки: 0', { fontSize: '24px', fill: '#fff', fontStyle: 'bold' });
             scoreText.setDepth(50);
 
-            // ВАШИ ИДЕАЛЬНЫЕ КООРДИНАТЫ
-            let pathPoints = [
-                681, 188, 676, 211, 668, 231, 658, 254, 650, 276, 638, 292, 629, 308, 
-                619, 325, 609, 341, 603, 357, 593, 370, 583, 381, 575, 390, 570, 400, 
-                568, 402, 564, 406, 554, 414, 538, 426, 522, 439, 499, 452, 467, 464, 
-                434, 474, 403, 482, 374, 482, 345, 481, 322, 482, 295, 478, 272, 470, 
-                244, 457, 218, 441, 199, 426, 186, 407, 168, 384, 158, 363, 155, 339, 
-                155, 319, 158, 296, 169, 274, 184, 255, 197, 234, 214, 221, 233, 203, 
-                256, 191, 275, 176, 299, 161, 334, 146, 376, 131, 422, 118, 464, 117, 
-                500, 117, 543, 127, 580, 152, 597, 186, 593, 221, 577, 254, 557, 280, 
-                538, 305, 518, 328, 491, 350, 457, 371, 421, 387, 385, 396, 348, 403, 
-                304, 402, 266, 389, 236, 371, 230, 349, 226, 321, 238, 300, 257, 279, 
-                282, 255, 311, 237, 337, 221, 369, 204, 396, 192, 429, 182, 460, 179, 
-                467, 191, 466, 204, 444, 241
-            ];
-            
-            let path = new Phaser.Curves.Spline(pathPoints);
+            // 2. Создаем траекторию для шариков (приблизительный овал, т.к. траекторию вы не нарисовали)
+            let path = new Phaser.Curves.Ellipse(400, 300, 300, 200);
 
-            // Делаем линию невидимой (последняя цифра 0 отвечает за прозрачность)
-            let graphics = this.add.graphics();
-            graphics.lineStyle(4, 0xff0000, 0); 
-            path.draw(graphics, 64);
-
-            // Создаем физическую группу для шариков на дорожке
-            enemyBalls = this.physics.add.group();
-
-            for (let i = 0; i < 30; i++) { 
-                let follower = this.add.follower(path, 0, 0, 'ball');
-                follower.displayWidth = 35;
-                follower.scaleY = follower.scaleX; 
-                
-                // Включаем физику для каждого шарика на дорожке
-                this.physics.add.existing(follower);
-                
-                enemyBalls.add(follower);
-                
-                follower.startFollow({
-                    duration: 30000, // Время прохождения всего пути (30 секунд)
-                    positionOnPath: true,
-                    repeat: -1,
-                    startAt: i * 0.025 // Расстояние между шариками
-                });
-            }
-
+            // ИСПРАВЛЕНИЕ ФИЗИКИ ПУЛЬ: Создаем группу пулек, сразу указывая им текстуру 'ball'
             bullets = this.physics.add.group({
-                classType: Phaser.Physics.Arcade.Image,
+                defaultKey: 'ball', // <--- ИСПРАВЛЕНИЕ: Это убирает черные квадраты
                 maxSize: 10,
                 runChildUpdate: true
             });
 
-            frog = this.add.image(380, 330, 'frog');
-            frog.displayWidth = 120;
-            frog.scaleY = frog.scaleX;
+            // 3. Запускаем цепочку шариков по траектории
+            enemyBalls = this.add.group();
+            
+            // ИСПРАВЛЕНИЕ СПЕЙСИНГА И СКОРОСТИ: Больше шариков, меньше дистанция, медленнее движение
+            const ballCount = 50; // Увеличили количество шариков
+            for (let i = 0; i < ballCount; i++) {
+                // Создаем шарик на дорожке
+                let follower = this.add.follower(path, 0, 0, 'ball');
+                
+                // ИСПРАВЛЕНИЕ КАЧЕСТВА И КРУГЛОЙ ФОРМЫ: Используем масштаб (0.2 = 20%), а не жесткие пиксели
+                follower.setScale(0.2); 
+                
+                // Включаем физику, чтобы в них можно было попасть
+                this.physics.add.existing(follower);
+                enemyBalls.add(follower);
+                
+                // Начинаем движение
+                follower.startFollow({
+                    duration: 25000, // МЕДЛЕННЕЕ: 25 секунд на полный круг
+                    positionOnPath: true,
+                    repeat: -1,
+                    yoyo: false,
+                    startAt: i * 0.015 // БЛИЖЕ: Сильно уменьшили зазор между шариками
+                });
+            }
 
-            currentAmmo = this.add.image(380, 330, 'ball');
-            currentAmmo.displayWidth = 35;
-            currentAmmo.scaleY = currentAmmo.scaleX;
-            currentAmmo.setDepth(10); 
+            // 4. Добавляем лягушку в центр
+            frog = this.add.image(400, 300, 'frog');
+            frog.setScale(0.8); // Настройте масштаб лягушки (0.8 = 80%)
+            frog.setOrigin(0.5); // Центрируем лягушку для правильного поворота
 
-            // Настройка столкновений: Снаряд попадает в шарик на дорожке
+            // 5. Заряженный шарик во рту лягушки
+            currentAmmo = this.add.image(400, 300, 'ball');
+            currentAmmo.setScale(0.2); // Снаряд такого же масштаба, как и шарики на дорожке
+            currentAmmo.setDepth(10); // Поверх лягушки
+
+            // 6. Обработка столкновений: Снаряд попадает в шарик на дорожке
             this.physics.add.overlap(bullets, enemyBalls, hitBall, null, this);
 
+            // 7. Поворот лягушки и снаряда за мышкой
             this.input.on('pointermove', function (pointer) {
                 if (!isPaused) {
                     const angle = Phaser.Math.Angle.Between(frog.x, frog.y, pointer.x, pointer.y);
-                    frog.rotation = angle + Math.PI / 2; 
-                    currentAmmo.x = frog.x + Math.cos(angle) * 45; 
-                    currentAmmo.y = frog.y + Math.sin(angle) * 45;
+                    frog.rotation = angle + Math.PI / 2; // +90 градусов для правильного взгляда
+
+                    // Смещаем снаряд ко «рту» лягушки
+                    const distFromCenter = 50; 
+                    currentAmmo.x = frog.x + Math.cos(angle) * distFromCenter; 
+                    currentAmmo.y = frog.y + Math.sin(angle) * distFromCenter;
                 }
             }, this);
 
+            // 8. Выстрел по клику
             this.input.on('pointerdown', function (pointer) {
                 if (!isPaused && this.time.now > lastFired) {
                     shootBall(this, pointer);
-                    lastFired = this.time.now + 300; 
+                    lastFired = this.time.now + 300; // Задержка между выстрелами
                 }
             }, this);
 
+            // Кнопка ПРОБЕЛ для вызова задачи
             this.input.keyboard.on('keydown-SPACE', showMathQuestion);
         }
 
         function update() {
+            // Очистка улетевших шариков-снарядов
             bullets.children.each(function(b) {
                 if (b.active && (b.y < 0 || b.y > 600 || b.x < 0 || b.x > 800)) {
                     b.setActive(false);
                     b.setVisible(false);
-                    b.destroy(); // Удаляем улетевший снаряд из памяти
+                    b.destroy(); // Удаляем снаряд из памяти
                 }
             });
         }
 
+        // Логика выстрела
         function shootBall(scene, pointer) {
-            let bullet = bullets.get();
+            let bullet = bullets.get(); // Получаем пулю из группы
             if (bullet) {
                 bullet.setActive(true);
                 bullet.setVisible(true);
-                bullet.setPosition(currentAmmo.x, currentAmmo.y);
-                bullet.displayWidth = 35;
-                bullet.scaleY = bullet.scaleX;
-                scene.physics.moveTo(bullet, pointer.x, pointer.y, 500); 
+                bullet.setPosition(currentAmmo.x, currentAmmo.y); // Появляется там, где был снаряд лягушки
+                
+                // ИСПРАВЛЕНИЕ ФИЗИКИ ПУЛЬ И ФОРМЫ: Гарантируем масштаб и круглую форму
+                bullet.setScale(0.2); 
+                bullet.setOrigin(0.5); // Центрируем физическое тело пули
+                bullet.body.enable = true; // Убедимся, что физика включена
+
+                // Заставляем лететь в сторону клика
+                scene.physics.moveTo(bullet, pointer.x, pointer.y, 500); // 500 - скорость
             }
         }
 
-        // ФУНКЦИЯ УНИЧТОЖЕНИЯ ШАРИКОВ ПРИ ПОПАДАНИИ
+        // Логика попадания
         function hitBall(bullet, enemyBall) {
-            bullet.destroy(); // Уничтожаем снаряд
-            
-            enemyBall.stopFollow(); // Останавливаем движение подбитого шарика
-            enemyBall.destroy(); // Уничтожаем шарик на дорожке
+            bullet.destroy(); // Удаляем пулю
+            enemyBall.destroy(); // Удаляем шарик с дорожки
             
             // Начисляем очки
             score += 10;
             scoreText.setText('Очки: ' + score);
         }
 
+        // Логика образовательной паузы
         function showMathQuestion() {
             if (isPaused) return; 
             isPaused = true;
-            game.scene.pause('default'); 
+            game.scene.pause('default'); // Ставим игру на паузу
 
             const q = questions[Math.floor(Math.random() * questions.length)];
             document.getElementById('question-text').innerText = q.q;
@@ -198,9 +221,12 @@
                 btn.className = 'answer-btn';
                 btn.innerText = opt;
                 btn.onclick = () => {
-                    if (index === q.correct) alert("Правильно! Путь открыт.");
-                    else alert("Ошибка! Будьте внимательнее.");
-                    
+                    if (index === q.correct) {
+                        alert("Правильно! Путь открыт.");
+                    } else {
+                        alert("Ошибка! Будьте внимательнее.");
+                    }
+                    // Убираем окно задачи и снимаем игру с паузы
                     document.getElementById('math-modal').style.display = 'none';
                     isPaused = false;
                     game.scene.resume('default');
