@@ -3,96 +3,174 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Генератор пути Wide: Шкатулка Зумы</title>
+    <title>Шкатулка интерактивов: Зума HD</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
     <style>
-        body { margin: 0; padding: 0; background-color: #000; overflow: hidden; font-family: sans-serif; }
-        /* Контейнер растянут на весь экран для центрирования холста */
+        /* Убираем всё лишнее и растягиваем контейнер */
+        body { margin: 0; padding: 0; background-color: #000; overflow: hidden; }
         #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        
+        /* ГЛАВНЫЙ СЕКРЕТ: Растягиваем сам холст игры на весь экран */
+        canvas { width: 100% !important; height: 100% !important; object-fit: fill; }
+
+        #math-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; box-shadow: 0 0 30px rgba(0,0,0,0.8); font-family: sans-serif; }
+        .answer-btn { display: block; width: 100%; margin: 10px 0; padding: 12px; background: #d4af37; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        .answer-btn:hover { background: #b8860b; color: white; }
     </style>
 </head>
 <body>
 
-    <div id="game-container"></div>
+    <div id="game-container">
+        <div id="math-modal">
+            <h2>Испытание Сфинкса</h2>
+            <p id="question-text" style="font-size: 18px; font-weight: bold; margin-top: 0;"></p>
+            <div id="answers-container"></div>
+        </div>
+    </div>
 
     <script>
         const config = {
             type: Phaser.AUTO,
             scale: {
-                // ENVELOP: покрывает экран, сохраняя пропорции! Никаких яиц!
-                mode: Phaser.Scale.FIT, 
-                autoCenter: Phaser.Scale.CENTER_BOTH,
-                width: 1280, // МЫ ОБНОВИЛИ ЛОГИЧЕСКОЕ РАЗРЕШЕНИЕ ПОД 16:9
+                mode: Phaser.Scale.NONE, // CSS управляет размером, Phaser — логикой
+                width: 1280, 
                 height: 720
             },
             parent: 'game-container',
-            scene: { preload: preload, create: create }
+            render: { 
+                antialias: true,
+                roundPixels: true 
+            },
+            physics: { default: 'arcade', arcade: { debug: false } }, 
+            scene: { preload: preload, create: create, update: update }
         };
 
         const game = new Phaser.Game(config);
         
-        let customPathPoints = [];
-        let graphics;
+        // Координаты лягушки (подвиньте, если нужно)
+        const FROG_X = 640; 
+        const FROG_Y = 360; 
+
+        let frog, currentAmmo, bullets, enemyBalls, lastFired = 0, isPaused = false, score = 0, scoreText;
+
+        const questions = [
+            { q: "Найдите корень уравнения: 2x + 8 = 20", options: ["x = 4", "x = 6", "x = 8"], correct: 1 },
+            { q: "Вычислите: 7² - 19", options: ["30", "40", "50"], correct: 0 },
+            { q: "Площадь квадрата со стороной 9?", options: ["18", "36", "81"], correct: 2 }
+        ];
 
         function preload() {
-            // Загружаем ваш новый WIDE фон 16:9
             this.load.image('background', 'bg.png');
+            this.load.image('frog', 'frog.png');
+            this.load.image('ball', 'ball.png');
         }
 
         function create() {
-            // Размещаем фон и жестко задаем ему размер 1280x720
+            // Фон теперь жестко привязан к логическим 1280x720
             this.add.image(640, 360, 'background').setDisplaySize(1280, 720);
 
-            // Инструкция на экране
-            this.add.text(10, 10, 'ИНСТРУМЕНТ СОЗДАТЕЛЯ (Wide Mode):\n1. Кликайте мышкой вдоль новой траншеи (от старта к финишу).\n2. Ставьте точки на каждом изгибе.\n3. Когда закончите, нажмите ENTER.', { 
-                fontSize: '18px', 
-                fill: '#00ff00', 
-                backgroundColor: 'rgba(0,0,0,0.8)',
-                padding: { x: 10, y: 10 }
-            }).setDepth(100);
+            scoreText = this.add.text(30, 30, 'Очки: 0', { fontSize: '32px', fill: '#fff', fontStyle: 'bold' });
+            scoreText.setDepth(50);
 
-            graphics = this.add.graphics();
+            // Ваши новые координаты
+            let pathPoints = [
+                1106, 231, 1087, 260, 1050, 318, 1017, 369, 973, 421, 925, 462, 886, 493, 
+                830, 522, 762, 550, 680, 571, 602, 580, 514, 577, 450, 565, 382, 548, 
+                328, 521, 275, 479, 236, 421, 236, 378, 245, 347, 264, 319, 296, 293, 
+                334, 266, 388, 237, 440, 211, 489, 196, 536, 179, 579, 163, 630, 149, 
+                668, 148, 716, 141, 802, 139, 860, 152, 918, 171, 957, 207, 966, 240, 
+                956, 270, 941, 306, 882, 354, 795, 415, 732, 445, 642, 472, 575, 484, 
+                516, 483, 456, 476, 409, 463, 372, 440, 355, 405, 358, 374, 388, 350, 
+                416, 328, 458, 307, 506, 280, 552, 261, 619, 238, 688, 222, 727, 215, 
+                746, 225, 754, 244, 743, 258, 709, 295
+            ];
+            
+            let path = new Phaser.Curves.Spline(pathPoints);
 
-            // Обрабатываем клик мыши
-            this.input.on('pointerdown', function (pointer) {
-                // Запоминаем координату клика (округленную для четкости)
-                customPathPoints.push(Math.round(pointer.x));
-                customPathPoints.push(Math.round(pointer.y));
-                
-                // Перерисовываем линию
-                drawPath();
+            bullets = this.physics.add.group({ defaultKey: 'ball', maxSize: 10, runChildUpdate: true });
+            enemyBalls = this.physics.add.group();
+            
+            for (let i = 0; i < 45; i++) {
+                let follower = this.add.follower(path, 0, 0, 'ball');
+                follower.setDisplaySize(45, 45); 
+                this.physics.add.existing(follower);
+                enemyBalls.add(follower);
+                follower.startFollow({ duration: 50000, positionOnPath: true, repeat: -1, startAt: i * 0.012 });
+            }
+
+            frog = this.add.image(FROG_X, FROG_Y, 'frog');
+            frog.setDisplaySize(150, 150); 
+
+            currentAmmo = this.add.image(FROG_X, FROG_Y, 'ball');
+            currentAmmo.setDisplaySize(45, 45); 
+            currentAmmo.setDepth(10); 
+
+            this.physics.add.overlap(bullets, enemyBalls, hitBall, null, this);
+
+            this.input.on('pointermove', function (pointer) {
+                if (!isPaused) {
+                    const angle = Phaser.Math.Angle.Between(frog.x, frog.y, pointer.x, pointer.y);
+                    frog.rotation = angle + Math.PI / 2; 
+                    const distFromCenter = 60; 
+                    currentAmmo.x = frog.x + Math.cos(angle) * distFromCenter; 
+                    currentAmmo.y = frog.y + Math.sin(angle) * distFromCenter;
+                }
+            }, this);
+
+            this.input.on('pointerdown', (pointer) => {
+                if (!isPaused && this.time.now > lastFired) {
+                    shootBall(this, pointer);
+                    lastFired = this.time.now + 300; 
+                }
             });
 
-            // Обрабатываем нажатие Enter
-            this.input.keyboard.on('keydown-ENTER', function () {
-                if (customPathPoints.length < 4) {
-                    alert("Поставьте хотя бы 2 точки!");
-                    return;
+            this.input.keyboard.on('keydown-SPACE', showMathQuestion);
+        }
+
+        function update() {
+            bullets.children.each(function(b) {
+                if (b.active && (b.y < 0 || b.y > 720 || b.x < 0 || b.x > 1280)) {
+                    b.setActive(false).setVisible(false).destroy(); 
                 }
-                
-                // Превращаем массив в строку через запятую
-                let codeStr = customPathPoints.join(', ');
-                
-                // Выводим системное окно, откуда легко скопировать текст
-                prompt("СУПЕР! Вот ваши новые wide-screen координаты дорожки. Скопируйте их (Ctrl+C) и отправьте мне:", codeStr);
             });
         }
 
-        function drawPath() {
-            graphics.clear();
-            
-            // Рисуем красную линию траектории
-            if (customPathPoints.length >= 4) {
-                graphics.lineStyle(4, 0xff0000, 1);
-                let path = new Phaser.Curves.Spline(customPathPoints);
-                path.draw(graphics, 64);
+        function shootBall(scene, pointer) {
+            let bullet = bullets.get(); 
+            if (bullet) {
+                bullet.setActive(true).setVisible(true).setPosition(currentAmmo.x, currentAmmo.y).setDisplaySize(45, 45);
+                bullet.body.enable = true; 
+                scene.physics.moveTo(bullet, pointer.x, pointer.y, 600); 
             }
-            
-            // Рисуем желтые кружочки в местах ваших кликов
-            graphics.fillStyle(0xffff00, 1);
-            for(let i = 0; i < customPathPoints.length; i += 2) {
-                graphics.fillCircle(customPathPoints[i], customPathPoints[i+1], 6);
-            }
+        }
+
+        function hitBall(bullet, enemyBall) {
+            bullet.destroy(); 
+            enemyBall.destroy(); 
+            score += 10;
+            scoreText.setText('Очки: ' + score);
+        }
+
+        function showMathQuestion() {
+            if (isPaused) return; 
+            isPaused = true;
+            game.scene.pause('default'); 
+            const q = questions[Math.floor(Math.random() * questions.length)];
+            document.getElementById('question-text').innerText = q.q;
+            const container = document.getElementById('answers-container');
+            container.innerHTML = '';
+            q.options.forEach((opt, index) => {
+                let btn = document.createElement('button');
+                btn.className = 'answer-btn';
+                btn.innerText = opt;
+                btn.onclick = () => {
+                    document.getElementById('math-modal').style.display = 'none';
+                    isPaused = false;
+                    game.scene.resume('default');
+                };
+                container.appendChild(btn);
+            });
+            document.getElementById('math-modal').style.display = 'block';
         }
     </script>
 </body>
