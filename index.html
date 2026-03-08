@@ -6,10 +6,8 @@
     <title>Шкатулка интерактивов: Зума</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
     <style>
-        /* Убираем отступы и делаем фон черным, чтобы игра смотрелась как в кинотеатре */
         body { margin: 0; padding: 0; background-color: #000; overflow: hidden; font-family: sans-serif; }
         #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        
         #math-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
         .answer-btn { display: block; width: 100%; margin: 10px 0; padding: 12px; background: #d4af37; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
         .answer-btn:hover { background: #b8860b; color: white; }
@@ -28,12 +26,11 @@
     <script>
         const config = {
             type: Phaser.AUTO,
-            // НОВОЕ: Настройки масштабирования на весь экран
             scale: {
-                mode: Phaser.Scale.FIT, // Растягивать, сохраняя пропорции
-                autoCenter: Phaser.Scale.CENTER_BOTH, // Центрировать по вертикали и горизонтали
-                width: 800,  // Базовая ширина под ваш фон
-                height: 600  // Базовая высота под ваш фон
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH,
+                width: 800,
+                height: 600
             },
             parent: 'game-container',
             physics: { default: 'arcade', arcade: { debug: false } },
@@ -63,29 +60,47 @@
         function create() {
             this.add.image(400, 300, 'background').setDisplaySize(800, 600);
 
+            // НОВЫЕ ТОЧНЫЕ КООРДИНАТЫ ПО ВАШЕМУ ФОНУ
             let pathPoints = [
-                120, 460, 100, 300, 150, 150, 400, 100, 650, 130, 
-                680, 300, 640, 480, 400, 520, 220, 480, 160, 300, 
-                220, 180, 400, 160, 550, 220, 580, 340, 480, 440, 470, 270
+                700, 480,  // Старт: нижняя правая лунка
+                550, 530,  // Вдоль нижнего края...
+                400, 530,
+                250, 520,
+                130, 470,  // Левый нижний угол
+                110, 300,  // Вверх по левой стороне
+                150, 150,  // Левый верхний угол
+                250, 110,
+                400, 100,  // Вдоль верхнего края
+                550, 110,
+                680, 160,  // Правый верхний угол
+                690, 300,  // Вниз по правой стороне (внутренний круг)
+                640, 430,  
+                500, 470,  
+                350, 460,  
+                230, 400,  // Внутренний левый нижний изгиб
+                180, 300,  
+                230, 200,  // Внутренний левый верхний изгиб
+                350, 160,  
+                470, 170,  
+                560, 240,  // Заход на финальную петлю к солнцу
+                540, 330,  
+                480, 290   // Финиш: центр солнца
             ];
             let path = new Phaser.Curves.Spline(pathPoints);
 
             let graphics = this.add.graphics();
-            graphics.lineStyle(4, 0xff0000, 0.6); // Измените 0.6 на 0, чтобы скрыть линию
+            graphics.lineStyle(4, 0xff0000, 0.6); // Пока оставляем красную линию для проверки
             path.draw(graphics, 64);
 
             enemyBalls = this.add.group();
-            for (let i = 0; i < 20; i++) { 
+            for (let i = 0; i < 25; i++) { 
                 let follower = this.add.follower(path, 0, 0, 'ball');
-                
-                // ИСПРАВЛЕНИЕ КАЧЕСТВА: Пропорциональное изменение размера шариков
                 follower.displayWidth = 35;
                 follower.scaleY = follower.scaleX; 
-                
                 enemyBalls.add(follower);
                 
                 follower.startFollow({
-                    duration: 20000, 
+                    duration: 25000, // Чуть замедлила скорость
                     positionOnPath: true,
                     repeat: -1,
                     startAt: i * 0.03 
@@ -98,13 +113,12 @@
                 runChildUpdate: true
             });
 
-            frog = this.add.image(330, 300, 'frog');
-            // ИСПРАВЛЕНИЕ КАЧЕСТВА: Пропорциональное изменение размера лягушки
+            // Сажаем лягушку идеально на пьедестал
+            frog = this.add.image(380, 330, 'frog');
             frog.displayWidth = 120;
             frog.scaleY = frog.scaleX;
 
-            currentAmmo = this.add.image(330, 300, 'ball');
-            // ИСПРАВЛЕНИЕ КАЧЕСТВА: Пропорциональное изменение размера снаряда
+            currentAmmo = this.add.image(380, 330, 'ball');
             currentAmmo.displayWidth = 35;
             currentAmmo.scaleY = currentAmmo.scaleX;
             currentAmmo.setDepth(10); 
@@ -144,7 +158,6 @@
                 bullet.setVisible(true);
                 bullet.setPosition(currentAmmo.x, currentAmmo.y);
                 
-                // ИСПРАВЛЕНИЕ КАЧЕСТВА: Пропорциональное изменение размера вылетающего шарика
                 bullet.displayWidth = 35;
                 bullet.scaleY = bullet.scaleX;
                 
