@@ -3,211 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Шкатулка интерактивов: Зума</title>
+    <title>Генератор пути Wide: Шкатулка Зумы</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
     <style>
-        /* Убрали агрессивное растягивание, оставили только черный фон и скрытие скролла */
-        body { margin: 0; padding: 0; background-color: #000; overflow: hidden; }
+        body { margin: 0; padding: 0; background-color: #000; overflow: hidden; font-family: sans-serif; }
+        /* Контейнер растянут на весь экран для центрирования холста */
         #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        
-        #math-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; box-shadow: 0 0 30px rgba(0,0,0,0.8); font-family: sans-serif; }
-        .answer-btn { display: block; width: 100%; margin: 10px 0; padding: 12px; background: #d4af37; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
-        .answer-btn:hover { background: #b8860b; color: white; }
     </style>
 </head>
 <body>
 
-    <div id="game-container">
-        <div id="math-modal">
-            <h2>Испытание Сфинкса</h2>
-            <p id="question-text" style="font-size: 18px; font-weight: bold; margin-top: 0;"></p>
-            <div id="answers-container"></div>
-        </div>
-    </div>
+    <div id="game-container"></div>
 
     <script>
         const config = {
             type: Phaser.AUTO,
             scale: {
-                // ENVELOP: покрывает весь экран, сохраняя идеальные пропорции! Никаких яиц!
-                mode: Phaser.Scale.ENVELOP, 
+                // ENVELOP: покрывает экран, сохраняя пропорции! Никаких яиц!
+                mode: Phaser.Scale.FIT, 
                 autoCenter: Phaser.Scale.CENTER_BOTH,
-                width: 800,
-                height: 600
+                width: 1280, // МЫ ОБНОВИЛИ ЛОГИЧЕСКОЕ РАЗРЕШЕНИЕ ПОД 16:9
+                height: 720
             },
             parent: 'game-container',
-            render: {
-                pixelArt: false, 
-                antialias: true  // Включаем сглаживание для хорошего качества
-            },
-            physics: { default: 'arcade', arcade: { debug: false } }, 
-            scene: { preload: preload, create: create, update: update }
+            scene: { preload: preload, create: create }
         };
 
         const game = new Phaser.Game(config);
-        let frog;
-        let currentAmmo; 
-        let bullets;      
-        let enemyBalls;   
-        let lastFired = 0;
-        let isPaused = false;
-        let score = 0;
-        let scoreText;
-
-        const questions = [
-            { q: "Найдите корень уравнения: 2x + 8 = 20", options: ["x = 4", "x = 6", "x = 8"], correct: 1 },
-            { q: "Вычислите: 7² - 19", options: ["30", "40", "50"], correct: 0 },
-            { q: "Чему равна площадь квадрата со стороной 9?", options: ["18", "36", "81"], correct: 2 }
-        ];
+        
+        let customPathPoints = [];
+        let graphics;
 
         function preload() {
+            // Загружаем ваш новый WIDE фон 16:9
             this.load.image('background', 'bg.png');
-            this.load.image('frog', 'frog.png');
-            this.load.image('ball', 'ball.png');
         }
 
         function create() {
-            this.add.image(400, 300, 'background').setDisplaySize(800, 600);
+            // Размещаем фон и жестко задаем ему размер 1280x720
+            this.add.image(640, 360, 'background').setDisplaySize(1280, 720);
 
-            scoreText = this.add.text(20, 20, 'Очки: 0', { fontSize: '24px', fill: '#fff', fontStyle: 'bold' });
-            scoreText.setDepth(50);
+            // Инструкция на экране
+            this.add.text(10, 10, 'ИНСТРУМЕНТ СОЗДАТЕЛЯ (Wide Mode):\n1. Кликайте мышкой вдоль новой траншеи (от старта к финишу).\n2. Ставьте точки на каждом изгибе.\n3. Когда закончите, нажмите ENTER.', { 
+                fontSize: '18px', 
+                fill: '#00ff00', 
+                backgroundColor: 'rgba(0,0,0,0.8)',
+                padding: { x: 10, y: 10 }
+            }).setDepth(100);
 
-            // Ваши точные координаты из "Редактора уровней"
-            let pathPoints = [
-                681, 188, 676, 211, 668, 231, 658, 254, 650, 276, 638, 292, 629, 308, 
-                619, 325, 609, 341, 603, 357, 593, 370, 583, 381, 575, 390, 570, 400, 
-                568, 402, 564, 406, 554, 414, 538, 426, 522, 439, 499, 452, 467, 464, 
-                434, 474, 403, 482, 374, 482, 345, 481, 322, 482, 295, 478, 272, 470, 
-                244, 457, 218, 441, 199, 426, 186, 407, 168, 384, 158, 363, 155, 339, 
-                155, 319, 158, 296, 169, 274, 184, 255, 197, 234, 214, 221, 233, 203, 
-                256, 191, 275, 176, 299, 161, 334, 146, 376, 131, 422, 118, 464, 117, 
-                500, 117, 543, 127, 580, 152, 597, 186, 593, 221, 577, 254, 557, 280, 
-                538, 305, 518, 328, 491, 350, 457, 371, 421, 387, 385, 396, 348, 403, 
-                304, 402, 266, 389, 236, 371, 230, 349, 226, 321, 238, 300, 257, 279, 
-                282, 255, 311, 237, 337, 221, 369, 204, 396, 192, 429, 182, 460, 179, 
-                467, 191, 466, 204, 444, 241
-            ];
-            
-            let path = new Phaser.Curves.Spline(pathPoints);
+            graphics = this.add.graphics();
 
-            bullets = this.physics.add.group({
-                defaultKey: 'ball', 
-                maxSize: 10,
-                runChildUpdate: true
-            });
-
-            enemyBalls = this.physics.add.group();
-            
-            // СОЗДАНИЕ ПЛОТНОЙ ЗМЕЙКИ
-            const ballCount = 40; // Количество шаров в змейке
-            for (let i = 0; i < ballCount; i++) {
-                let follower = this.add.follower(path, 0, 0, 'ball');
-                
-                // Жестко задаем размер в 35 пикселей (будет идеальный круг)
-                follower.setDisplaySize(35, 35); 
-                
-                this.physics.add.existing(follower);
-                enemyBalls.add(follower);
-                
-                follower.startFollow({
-                    duration: 40000, // Очень медленно ползут (40 секунд на путь)
-                    positionOnPath: true,
-                    repeat: -1,
-                    // Идеально подобранная дистанция для шариков 35px:
-                    startAt: i * 0.012 
-                });
-            }
-
-            frog = this.add.image(380, 330, 'frog');
-            frog.setDisplaySize(120, 120); 
-
-            currentAmmo = this.add.image(380, 330, 'ball');
-            currentAmmo.setDisplaySize(35, 35); 
-            currentAmmo.setDepth(10); 
-
-            this.physics.add.overlap(bullets, enemyBalls, hitBall, null, this);
-
-            this.input.on('pointermove', function (pointer) {
-                if (!isPaused) {
-                    const angle = Phaser.Math.Angle.Between(frog.x, frog.y, pointer.x, pointer.y);
-                    frog.rotation = angle + Math.PI / 2; 
-
-                    const distFromCenter = 45; 
-                    currentAmmo.x = frog.x + Math.cos(angle) * distFromCenter; 
-                    currentAmmo.y = frog.y + Math.sin(angle) * distFromCenter;
-                }
-            }, this);
-
+            // Обрабатываем клик мыши
             this.input.on('pointerdown', function (pointer) {
-                if (!isPaused && this.time.now > lastFired) {
-                    shootBall(this, pointer);
-                    lastFired = this.time.now + 300; 
-                }
-            }, this);
-
-            this.input.keyboard.on('keydown-SPACE', showMathQuestion);
-        }
-
-        function update() {
-            bullets.children.each(function(b) {
-                if (b.active && (b.y < 0 || b.y > 600 || b.x < 0 || b.x > 800)) {
-                    b.setActive(false);
-                    b.setVisible(false);
-                    b.destroy(); 
-                }
-            });
-        }
-
-        function shootBall(scene, pointer) {
-            let bullet = bullets.get(); 
-            if (bullet) {
-                bullet.setActive(true);
-                bullet.setVisible(true);
-                bullet.setPosition(currentAmmo.x, currentAmmo.y); 
+                // Запоминаем координату клика (округленную для четкости)
+                customPathPoints.push(Math.round(pointer.x));
+                customPathPoints.push(Math.round(pointer.y));
                 
-                bullet.setDisplaySize(35, 35); 
-                bullet.body.enable = true; 
-
-                scene.physics.moveTo(bullet, pointer.x, pointer.y, 500); 
-            }
-        }
-
-        function hitBall(bullet, enemyBall) {
-            bullet.destroy(); 
-            enemyBall.destroy(); 
-            
-            score += 10;
-            scoreText.setText('Очки: ' + score);
-        }
-
-        function showMathQuestion() {
-            if (isPaused) return; 
-            isPaused = true;
-            game.scene.pause('default'); 
-
-            const q = questions[Math.floor(Math.random() * questions.length)];
-            document.getElementById('question-text').innerText = q.q;
-            
-            const container = document.getElementById('answers-container');
-            container.innerHTML = '';
-            
-            q.options.forEach((opt, index) => {
-                let btn = document.createElement('button');
-                btn.className = 'answer-btn';
-                btn.innerText = opt;
-                btn.onclick = () => {
-                    if (index === q.correct) {
-                        alert("Правильно! Путь открыт.");
-                    } else {
-                        alert("Ошибка! Будьте внимательнее.");
-                    }
-                    document.getElementById('math-modal').style.display = 'none';
-                    isPaused = false;
-                    game.scene.resume('default');
-                };
-                container.appendChild(btn);
+                // Перерисовываем линию
+                drawPath();
             });
-            document.getElementById('math-modal').style.display = 'block';
+
+            // Обрабатываем нажатие Enter
+            this.input.keyboard.on('keydown-ENTER', function () {
+                if (customPathPoints.length < 4) {
+                    alert("Поставьте хотя бы 2 точки!");
+                    return;
+                }
+                
+                // Превращаем массив в строку через запятую
+                let codeStr = customPathPoints.join(', ');
+                
+                // Выводим системное окно, откуда легко скопировать текст
+                prompt("СУПЕР! Вот ваши новые wide-screen координаты дорожки. Скопируйте их (Ctrl+C) и отправьте мне:", codeStr);
+            });
+        }
+
+        function drawPath() {
+            graphics.clear();
+            
+            // Рисуем красную линию траектории
+            if (customPathPoints.length >= 4) {
+                graphics.lineStyle(4, 0xff0000, 1);
+                let path = new Phaser.Curves.Spline(customPathPoints);
+                path.draw(graphics, 64);
+            }
+            
+            // Рисуем желтые кружочки в местах ваших кликов
+            graphics.fillStyle(0xffff00, 1);
+            for(let i = 0; i < customPathPoints.length; i += 2) {
+                graphics.fillCircle(customPathPoints[i], customPathPoints[i+1], 6);
+            }
         }
     </script>
 </body>
