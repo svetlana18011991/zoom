@@ -6,9 +6,11 @@
     <title>Шкатулка интерактивов: Зума</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #2c3e50; font-family: sans-serif; }
-        #game-container { position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
-        #math-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; }
+        /* Убираем отступы и делаем фон черным, чтобы игра смотрелась как в кинотеатре */
+        body { margin: 0; padding: 0; background-color: #000; overflow: hidden; font-family: sans-serif; }
+        #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        
+        #math-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
         .answer-btn { display: block; width: 100%; margin: 10px 0; padding: 12px; background: #d4af37; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
         .answer-btn:hover { background: #b8860b; color: white; }
     </style>
@@ -26,8 +28,13 @@
     <script>
         const config = {
             type: Phaser.AUTO,
-            width: 800,
-            height: 600,
+            // НОВОЕ: Настройки масштабирования на весь экран
+            scale: {
+                mode: Phaser.Scale.FIT, // Растягивать, сохраняя пропорции
+                autoCenter: Phaser.Scale.CENTER_BOTH, // Центрировать по вертикали и горизонтали
+                width: 800,  // Базовая ширина под ваш фон
+                height: 600  // Базовая высота под ваш фон
+            },
             parent: 'game-container',
             physics: { default: 'arcade', arcade: { debug: false } },
             scene: { preload: preload, create: create, update: update }
@@ -35,13 +42,12 @@
 
         const game = new Phaser.Game(config);
         let frog;
-        let currentAmmo; // Шарик, который заряжен в лягушку
+        let currentAmmo; 
         let bullets;
         let enemyBalls;
         let lastFired = 0;
         let isPaused = false;
 
-        // Задачи (формат ОГЭ/базовый)
         const questions = [
             { q: "Найдите корень уравнения: 2x + 8 = 20", options: ["x = 4", "x = 6", "x = 8"], correct: 1 },
             { q: "Вычислите: 7² - 19", options: ["30", "40", "50"], correct: 0 },
@@ -57,38 +63,32 @@
         function create() {
             this.add.image(400, 300, 'background').setDisplaySize(800, 600);
 
-            // 1. КООРДИНАТЫ ДОРОЖКИ (x, y, x, y...)
-            // Меняйте эти цифры, чтобы подогнать красную линию под ваш фон!
             let pathPoints = [
-                0, 100,    // Старт (левый верхний край)
-                200, 150,
-                400, 100,
-                650, 200,
-                700, 400,
-                500, 500,
-                200, 450,
-                150, 300   // Конец (около лягушки)
+                120, 460, 100, 300, 150, 150, 400, 100, 650, 130, 
+                680, 300, 640, 480, 400, 520, 220, 480, 160, 300, 
+                220, 180, 400, 160, 550, 220, 580, 340, 480, 440, 470, 270
             ];
-            
             let path = new Phaser.Curves.Spline(pathPoints);
 
-            // Временная красная линия, чтобы вы видели, где катятся шары
             let graphics = this.add.graphics();
-            graphics.lineStyle(4, 0xff0000, 0.6); // Толщина 4, красный цвет, прозрачность 0.6
+            graphics.lineStyle(4, 0xff0000, 0.6); // Измените 0.6 на 0, чтобы скрыть линию
             path.draw(graphics, 64);
 
-            // 2. Создаем цепочку шариков
             enemyBalls = this.add.group();
-            for (let i = 0; i < 15; i++) {
+            for (let i = 0; i < 20; i++) { 
                 let follower = this.add.follower(path, 0, 0, 'ball');
-                follower.setDisplaySize(45, 45); 
+                
+                // ИСПРАВЛЕНИЕ КАЧЕСТВА: Пропорциональное изменение размера шариков
+                follower.displayWidth = 35;
+                follower.scaleY = follower.scaleX; 
+                
                 enemyBalls.add(follower);
                 
                 follower.startFollow({
-                    duration: 15000, 
+                    duration: 20000, 
                     positionOnPath: true,
                     repeat: -1,
-                    startAt: i * 0.04 
+                    startAt: i * 0.03 
                 });
             }
 
@@ -98,23 +98,21 @@
                 runChildUpdate: true
             });
 
-            // 3. ЛЯГУШКА И СНАРЯД
-            // Сдвигаем лягушку левее (X: 320, Y: 300)
-            frog = this.add.image(320, 300, 'frog');
-            frog.setDisplaySize(120, 120); 
+            frog = this.add.image(330, 300, 'frog');
+            // ИСПРАВЛЕНИЕ КАЧЕСТВА: Пропорциональное изменение размера лягушки
+            frog.displayWidth = 120;
+            frog.scaleY = frog.scaleX;
 
-            // Добавляем "заряженный" шарик в рот лягушке
-            currentAmmo = this.add.image(320, 300, 'ball');
-            currentAmmo.setDisplaySize(30, 30); // Снаряд чуть меньше летящего
-            currentAmmo.setDepth(10); // Чтобы шарик был поверх лягушки
+            currentAmmo = this.add.image(330, 300, 'ball');
+            // ИСПРАВЛЕНИЕ КАЧЕСТВА: Пропорциональное изменение размера снаряда
+            currentAmmo.displayWidth = 35;
+            currentAmmo.scaleY = currentAmmo.scaleX;
+            currentAmmo.setDepth(10); 
 
-            // 4. Поворот лягушки и снаряда
             this.input.on('pointermove', function (pointer) {
                 if (!isPaused) {
                     const angle = Phaser.Math.Angle.Between(frog.x, frog.y, pointer.x, pointer.y);
                     frog.rotation = angle + Math.PI / 2; 
-                    
-                    // Смещаем шарик к "рту" лягушки (45 пикселей от центра)
                     currentAmmo.x = frog.x + Math.cos(angle) * 45; 
                     currentAmmo.y = frog.y + Math.sin(angle) * 45;
                 }
@@ -144,10 +142,11 @@
             if (bullet) {
                 bullet.setActive(true);
                 bullet.setVisible(true);
-                
-                // Снаряд вылетает из того места, где находится currentAmmo
                 bullet.setPosition(currentAmmo.x, currentAmmo.y);
-                bullet.setDisplaySize(45, 45);
+                
+                // ИСПРАВЛЕНИЕ КАЧЕСТВА: Пропорциональное изменение размера вылетающего шарика
+                bullet.displayWidth = 35;
+                bullet.scaleY = bullet.scaleX;
                 
                 scene.physics.moveTo(bullet, pointer.x, pointer.y, 500); 
             }
