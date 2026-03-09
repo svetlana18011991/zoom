@@ -6,7 +6,7 @@
     <title>Шкатулка интерактивов: Зума HD</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
     <style>
-        body { margin: 0; padding: 0; background-color: #000; overflow: hidden; }
+        body { margin: 0; padding: 0; background-color: #000; overflow: hidden; font-family: sans-serif; }
         #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
         
         /* ИДЕАЛЬНЫЙ ФОН: Заполняет экран, сохраняет пропорции, не сплющивает картинку */
@@ -92,23 +92,18 @@
             
             for (let i = 0; i < 45; i++) {
                 let follower = this.add.follower(path, 0, 0, 'ball');
-                
-                // ИДЕАЛЬНЫЕ ПРОПОРЦИИ: задаем только ширину, высоту движок подгоняет сам
                 follower.displayWidth = 45; 
                 follower.scaleY = follower.scaleX; 
-                
                 this.physics.add.existing(follower);
                 enemyBalls.add(follower);
                 follower.startFollow({ duration: 50000, positionOnPath: true, repeat: -1, startAt: i * 0.012 });
             }
 
             frog = this.add.image(FROG_X, FROG_Y, 'frog');
-            // ИДЕАЛЬНЫЕ ПРОПОРЦИИ ДЛЯ ЛЯГУШКИ
             frog.displayWidth = 150; 
             frog.scaleY = frog.scaleX; 
 
             currentAmmo = this.add.image(FROG_X, FROG_Y, 'ball');
-            // ИДЕАЛЬНЫЕ ПРОПОРЦИИ ДЛЯ СНАРЯДА
             currentAmmo.displayWidth = 45; 
             currentAmmo.scaleY = currentAmmo.scaleX; 
             currentAmmo.setDepth(10); 
@@ -118,8 +113,12 @@
             this.input.on('pointermove', function (pointer) {
                 if (!isPaused) {
                     const angle = Phaser.Math.Angle.Between(frog.x, frog.y, pointer.x, pointer.y);
-                    frog.rotation = angle + Math.PI / 2; 
-                    const distFromCenter = 60; 
+                    
+                    // ИСПРАВЛЕНИЕ 1: Меняем + на -, чтобы лягушка смотрела ртом на мышку
+                    frog.rotation = angle - Math.PI / 2; 
+                    
+                    // ИСПРАВЛЕНИЕ 2: Чуть увеличиваем дистанцию, чтобы шарик лежал ровно в золотой воронке рта
+                    const distFromCenter = 65; 
                     currentAmmo.x = frog.x + Math.cos(angle) * distFromCenter; 
                     currentAmmo.y = frog.y + Math.sin(angle) * distFromCenter;
                 }
@@ -147,11 +146,8 @@
             let bullet = bullets.get(); 
             if (bullet) {
                 bullet.setActive(true).setVisible(true).setPosition(currentAmmo.x, currentAmmo.y);
-                
-                // ИДЕАЛЬНЫЕ ПРОПОРЦИИ ДЛЯ ВЫСТРЕЛА
                 bullet.displayWidth = 45;
                 bullet.scaleY = bullet.scaleX;
-                
                 bullet.body.enable = true; 
                 scene.physics.moveTo(bullet, pointer.x, pointer.y, 600); 
             }
