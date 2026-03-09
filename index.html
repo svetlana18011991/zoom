@@ -8,15 +8,8 @@
     <style>
         body { margin: 0; padding: 0; background-color: #000; overflow: hidden; font-family: sans-serif; }
         #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        
-        /* ИДЕАЛЬНЫЙ ФОН: Заполняет экран, сохраняет пропорции, не сплющивает картинку */
-        canvas { 
-            width: 100vw !important; 
-            height: 100vh !important; 
-            object-fit: cover !important; 
-        }
-
-        #math-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; box-shadow: 0 0 30px rgba(0,0,0,0.8); font-family: sans-serif; }
+        canvas { width: 100vw !important; height: 100vh !important; object-fit: cover !important; display: block; }
+        #math-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
         .answer-btn { display: block; width: 100%; margin: 10px 0; padding: 12px; background: #d4af37; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
         .answer-btn:hover { background: #b8860b; color: white; }
     </style>
@@ -34,31 +27,31 @@
     <script>
         const config = {
             type: Phaser.AUTO,
-            scale: {
-                mode: Phaser.Scale.NONE, 
-                width: 1280, 
-                height: 720
-            },
+            scale: { mode: Phaser.Scale.NONE, width: 1280, height: 720 },
             parent: 'game-container',
-            render: { 
-                antialias: true,
-                roundPixels: true 
-            },
+            render: { antialias: true, roundPixels: true },
             physics: { default: 'arcade', arcade: { debug: false } }, 
             scene: { preload: preload, create: create, update: update }
         };
 
         const game = new Phaser.Game(config);
         
-        const FROG_X = 640; 
+        // 1. ИСПРАВЛЕНИЕ: Сдвинули лягушку левее
+        const FROG_X = 610; 
         const FROG_Y = 360; 
 
-        let frog, currentAmmo, bullets, enemyBalls, lastFired = 0, isPaused = false, score = 0, scoreText;
+        // 2. ЦВЕТА ШАРИКОВ (Белый=Оригинальный красный, Зеленый, Синий, Желтый)
+        const BALL_COLORS = [0xffffff, 0x00ff00, 0x00aaff, 0xffff00];
+
+        let frog, currentAmmo, bullets, enemyBalls, particles;
+        let lastFired = 0, isPaused = false, score = 0, scoreText;
+        let comboCounter = 0; // Счетчик для вызова вопросов
 
         const questions = [
             { q: "Найдите корень уравнения: 2x + 8 = 20", options: ["x = 4", "x = 6", "x = 8"], correct: 1 },
             { q: "Вычислите: 7² - 19", options: ["30", "40", "50"], correct: 0 },
-            { q: "Площадь квадрата со стороной 9?", options: ["18", "36", "81"], correct: 2 }
+            { q: "Площадь квадрата со стороной 9?", options: ["18", "36", "81"], correct: 2 },
+            { q: "Вычислите: 5 × 12", options: ["50", "60", "70"], correct: 1 }
         ];
 
         function preload() {
@@ -70,8 +63,12 @@
         function create() {
             this.add.image(640, 360, 'background').setDisplaySize(1280, 720);
 
-            scoreText = this.add.text(30, 30, 'Очки: 0', { fontSize: '32px', fill: '#fff', fontStyle: 'bold' });
+            // 3. ИСПРАВЛЕНИЕ: Опустили текст очков ниже (Y = 80)
+            scoreText = this.add.text(40, 80, 'Очки: 0', { fontSize: '32px', fill: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 });
             scoreText.setDepth(50);
+
+            // Система спецэффектов (взрыв частиц)
+            particles = this.add.particles('ball');
 
             let pathPoints = [
                 1106, 231, 1087, 260, 1050, 318, 1017, 369, 973, 421, 925, 462, 886, 493, 
@@ -90,13 +87,23 @@
             bullets = this.physics.add.group({ defaultKey: 'ball', maxSize: 10, runChildUpdate: true });
             enemyBalls = this.physics.add.group();
             
-            for (let i = 0; i < 45; i++) {
+            // 4. ИСПРАВЛЕНИЕ: Делаем плотную змейку
+            const ballCount = 70; // Больше шаров
+            for (let i = 0; i < ballCount; i++) {
                 let follower = this.add.follower(path, 0, 0, 'ball');
                 follower.displayWidth = 45; 
                 follower.scaleY = follower.scaleX; 
+                
+                // Назначаем случайный цвет
+                let randomColor = Phaser.Utils.Array.GetRandom(BALL_COLORS);
+                follower.setTint(randomColor);
+                follower.customColor = randomColor; // Запоминаем цвет для проверки
+
                 this.physics.add.existing(follower);
                 enemyBalls.add(follower);
-                follower.startFollow({ duration: 50000, positionOnPath: true, repeat: -1, startAt: i * 0.012 });
+                
+                // startAt = 0.007 делает их вплотную друг к другу
+                follower.startFollow({ duration: 60000, positionOnPath: true, repeat: -1, startAt: i * 0.007 });
             }
 
             frog = this.add.image(FROG_X, FROG_Y, 'frog');
@@ -104,21 +111,22 @@
             frog.scaleY = frog.scaleX; 
 
             currentAmmo = this.add.image(FROG_X, FROG_Y, 'ball');
-            currentAmmo.displayWidth = 45; 
+            currentAmmo.displayWidth = 40; // Снаряд чуть меньше, чтобы влез в рот
             currentAmmo.scaleY = currentAmmo.scaleX; 
             currentAmmo.setDepth(10); 
+            
+            // Заряжаем первый цвет
+            reloadAmmo();
 
             this.physics.add.overlap(bullets, enemyBalls, hitBall, null, this);
 
             this.input.on('pointermove', function (pointer) {
                 if (!isPaused) {
                     const angle = Phaser.Math.Angle.Between(frog.x, frog.y, pointer.x, pointer.y);
-                    
-                    // ИСПРАВЛЕНИЕ 1: Меняем + на -, чтобы лягушка смотрела ртом на мышку
                     frog.rotation = angle - Math.PI / 2; 
-                    
-                    // ИСПРАВЛЕНИЕ 2: Чуть увеличиваем дистанцию, чтобы шарик лежал ровно в золотой воронке рта
-                    const distFromCenter = 65; 
+
+                    // 5. ИСПРАВЛЕНИЕ: Шарик глубже во рту (уменьшили дистанцию до 45)
+                    const distFromCenter = 45; 
                     currentAmmo.x = frog.x + Math.cos(angle) * distFromCenter; 
                     currentAmmo.y = frog.y + Math.sin(angle) * distFromCenter;
                 }
@@ -142,6 +150,13 @@
             });
         }
 
+        // Функция зарядки нового цвета в лягушку
+        function reloadAmmo() {
+            let nextColor = Phaser.Utils.Array.GetRandom(BALL_COLORS);
+            currentAmmo.setTint(nextColor);
+            currentAmmo.customColor = nextColor;
+        }
+
         function shootBall(scene, pointer) {
             let bullet = bullets.get(); 
             if (bullet) {
@@ -149,15 +164,51 @@
                 bullet.displayWidth = 45;
                 bullet.scaleY = bullet.scaleX;
                 bullet.body.enable = true; 
+                
+                // Передаем цвет снаряду
+                bullet.setTint(currentAmmo.customColor);
+                bullet.customColor = currentAmmo.customColor;
+                
                 scene.physics.moveTo(bullet, pointer.x, pointer.y, 600); 
+                
+                // Заряжаем следующий
+                reloadAmmo();
             }
         }
 
         function hitBall(bullet, enemyBall) {
-            bullet.destroy(); 
-            enemyBall.destroy(); 
-            score += 10;
-            scoreText.setText('Очки: ' + score);
+            // ПРОВЕРКА ЦВЕТА
+            if (bullet.customColor === enemyBall.customColor) {
+                // Взрыв частиц
+                let emitter = particles.createEmitter({
+                    speed: { min: 50, max: 150 },
+                    scale: { start: 0.15, end: 0 },
+                    tint: bullet.customColor, // Частицы цвета шарика
+                    lifespan: 400,
+                    blendMode: 'ADD'
+                });
+                emitter.explode(15, enemyBall.x, enemyBall.y);
+
+                bullet.destroy(); 
+                enemyBall.destroy(); 
+                
+                score += 10;
+                scoreText.setText('Очки: ' + score);
+
+                // ОБРАЗОВАТЕЛЬНАЯ МЕХАНИКА: Каждые 5 сбитых шаров — вопрос
+                comboCounter++;
+                if (comboCounter >= 5) {
+                    comboCounter = 0; // Сбрасываем счетчик
+                    setTimeout(showMathQuestion, 300); // Небольшая задержка перед окном
+                }
+            } else {
+                // Если цвета не совпали, снаряд просто разбивается
+                let emitter = particles.createEmitter({
+                    speed: 50, scale: { start: 0.05, end: 0 }, tint: 0xffffff, lifespan: 200
+                });
+                emitter.explode(5, bullet.x, bullet.y);
+                bullet.destroy();
+            }
         }
 
         function showMathQuestion() {
@@ -173,6 +224,13 @@
                 btn.className = 'answer-btn';
                 btn.innerText = opt;
                 btn.onclick = () => {
+                    if (index === q.correct) {
+                        alert("Правильно! Путь открыт, +50 бонусных очков!");
+                        score += 50;
+                        scoreText.setText('Очки: ' + score);
+                    } else {
+                        alert("Ошибка! Будьте внимательнее.");
+                    }
                     document.getElementById('math-modal').style.display = 'none';
                     isPaused = false;
                     game.scene.resume('default');
