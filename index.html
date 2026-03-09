@@ -6,12 +6,15 @@
     <title>Шкатулка интерактивов: Зума HD</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
     <style>
-        /* Убираем всё лишнее и растягиваем контейнер */
         body { margin: 0; padding: 0; background-color: #000; overflow: hidden; }
         #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
         
-        /* ГЛАВНЫЙ СЕКРЕТ: Растягиваем сам холст игры на весь экран */
-        canvas { width: 100% !important; height: 100% !important; object-fit: fill; }
+        /* ИДЕАЛЬНЫЙ ФОН: Заполняет экран, сохраняет пропорции, не сплющивает картинку */
+        canvas { 
+            width: 100vw !important; 
+            height: 100vh !important; 
+            object-fit: cover !important; 
+        }
 
         #math-modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; box-shadow: 0 0 30px rgba(0,0,0,0.8); font-family: sans-serif; }
         .answer-btn { display: block; width: 100%; margin: 10px 0; padding: 12px; background: #d4af37; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
@@ -32,7 +35,7 @@
         const config = {
             type: Phaser.AUTO,
             scale: {
-                mode: Phaser.Scale.NONE, // CSS управляет размером, Phaser — логикой
+                mode: Phaser.Scale.NONE, 
                 width: 1280, 
                 height: 720
             },
@@ -47,7 +50,6 @@
 
         const game = new Phaser.Game(config);
         
-        // Координаты лягушки (подвиньте, если нужно)
         const FROG_X = 640; 
         const FROG_Y = 360; 
 
@@ -66,13 +68,11 @@
         }
 
         function create() {
-            // Фон теперь жестко привязан к логическим 1280x720
             this.add.image(640, 360, 'background').setDisplaySize(1280, 720);
 
             scoreText = this.add.text(30, 30, 'Очки: 0', { fontSize: '32px', fill: '#fff', fontStyle: 'bold' });
             scoreText.setDepth(50);
 
-            // Ваши новые координаты
             let pathPoints = [
                 1106, 231, 1087, 260, 1050, 318, 1017, 369, 973, 421, 925, 462, 886, 493, 
                 830, 522, 762, 550, 680, 571, 602, 580, 514, 577, 450, 565, 382, 548, 
@@ -92,17 +92,25 @@
             
             for (let i = 0; i < 45; i++) {
                 let follower = this.add.follower(path, 0, 0, 'ball');
-                follower.setDisplaySize(45, 45); 
+                
+                // ИДЕАЛЬНЫЕ ПРОПОРЦИИ: задаем только ширину, высоту движок подгоняет сам
+                follower.displayWidth = 45; 
+                follower.scaleY = follower.scaleX; 
+                
                 this.physics.add.existing(follower);
                 enemyBalls.add(follower);
                 follower.startFollow({ duration: 50000, positionOnPath: true, repeat: -1, startAt: i * 0.012 });
             }
 
             frog = this.add.image(FROG_X, FROG_Y, 'frog');
-            frog.setDisplaySize(150, 150); 
+            // ИДЕАЛЬНЫЕ ПРОПОРЦИИ ДЛЯ ЛЯГУШКИ
+            frog.displayWidth = 150; 
+            frog.scaleY = frog.scaleX; 
 
             currentAmmo = this.add.image(FROG_X, FROG_Y, 'ball');
-            currentAmmo.setDisplaySize(45, 45); 
+            // ИДЕАЛЬНЫЕ ПРОПОРЦИИ ДЛЯ СНАРЯДА
+            currentAmmo.displayWidth = 45; 
+            currentAmmo.scaleY = currentAmmo.scaleX; 
             currentAmmo.setDepth(10); 
 
             this.physics.add.overlap(bullets, enemyBalls, hitBall, null, this);
@@ -138,7 +146,12 @@
         function shootBall(scene, pointer) {
             let bullet = bullets.get(); 
             if (bullet) {
-                bullet.setActive(true).setVisible(true).setPosition(currentAmmo.x, currentAmmo.y).setDisplaySize(45, 45);
+                bullet.setActive(true).setVisible(true).setPosition(currentAmmo.x, currentAmmo.y);
+                
+                // ИДЕАЛЬНЫЕ ПРОПОРЦИИ ДЛЯ ВЫСТРЕЛА
+                bullet.displayWidth = 45;
+                bullet.scaleY = bullet.scaleX;
+                
                 bullet.body.enable = true; 
                 scene.physics.moveTo(bullet, pointer.x, pointer.y, 600); 
             }
