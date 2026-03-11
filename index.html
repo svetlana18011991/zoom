@@ -10,7 +10,6 @@
         #game-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
         canvas { width: 100vw !important; height: 100vh !important; object-fit: cover !important; display: block; }
         
-        /* Стили для модальных окон (Задачи и Game Over) */
         .modal { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(250, 240, 220, 0.95); padding: 30px; border: 4px solid #b8860b; border-radius: 10px; text-align: center; width: 320px; z-index: 100; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
         .modal h2 { margin-top: 0; color: #333; }
         .answer-btn, .restart-btn { display: block; width: 100%; margin: 10px 0; padding: 12px; background: #d4af37; border: none; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s; color: #000; }
@@ -50,8 +49,6 @@
         
         const FROG_X = 610; 
         const FROG_Y = 360; 
-
-        // Координаты знака солнца (конец пути)
         const END_X = 709;
         const END_Y = 295;
 
@@ -109,9 +106,7 @@
                 follower.setTint(randomColor);
                 follower.customColor = randomColor; 
 
-                this.physics.add.existing(follower);
                 enemyBalls.add(follower);
-                
                 follower.startFollow({ duration: 60000, positionOnPath: true, repeat: -1, startAt: i * 0.007 });
             }
 
@@ -125,8 +120,6 @@
             currentAmmo.setDepth(10); 
             
             reloadAmmo();
-
-            this.physics.add.overlap(bullets, enemyBalls, hitBall, null, this);
 
             this.input.on('pointermove', function (pointer) {
                 if (!isPaused && !isGameOver) {
@@ -152,20 +145,42 @@
         function update() {
             if (isGameOver) return;
 
-            // Удаляем улетевшие за экран пули
-            bullets.children.each(function(b) {
-                if (b.active && (b.y < 0 || b.y > 720 || b.x < 0 || b.x > 1280)) {
-                    b.setActive(false).setVisible(false).destroy(); 
-                }
-            });
-
-            // ПРОВЕРКА ПРОИГРЫША: Достиг ли хоть один шарик финиша?
+            // ПРОВЕРКА ПРОИГРЫША
             enemyBalls.children.each(function(b) {
                 if (b.active) {
                     let distToSun = Phaser.Math.Distance.Between(b.x, b.y, END_X, END_Y);
                     if (distToSun < 15 && !isGameOver) {
                         triggerGameOver();
                     }
+                }
+            });
+
+            // ИСПРАВЛЕНИЕ БАГА "НЕВИДИМОЙ СТЕНЫ": Собственная система точных попаданий
+            bullets.children.each(function(bullet) {
+                if (!bullet.active) return;
+
+                // Удаляем пули, улетевшие за край экрана
+                if (bullet.y < 0 || bullet.y > 720 || bullet.x < 0 || bullet.x > 1280) {
+                    bullet.setActive(false).setVisible(false).destroy(); 
+                    return;
+                }
+
+                // Ищем самый ближайший к снаряду шарик на дорожке
+                let closestBall = null;
+                let minDistance = 100000;
+
+                enemyBalls.children.each(function(enemyBall) {
+                    if (!enemyBall.active) return;
+                    let dist = Phaser.Math.Distance.Between(bullet.x, bullet.y, enemyBall.x, enemyBall.y);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestBall = enemyBall;
+                    }
+                });
+
+                // Если снаряд подобрался к ближайшему шарику ближе чем на 35 пикселей - БИНГО!
+                if (closestBall && minDistance <= 35) {
+                    hitBall(bullet, closestBall);
                 }
             });
         }
@@ -193,12 +208,8 @@
         }
 
         function hitBall(bullet, enemyBall) {
-            // ИСПРАВЛЕНИЕ "НЕВИДИМОЙ СТЕНЫ": Проверяем реальную дистанцию между центрами
-            const distance = Phaser.Math.Distance.Between(bullet.x, bullet.y, enemyBall.x, enemyBall.y);
-            if (distance > 42) return; // Если соприкоснулись только прозрачные рамки картинок - игнорируем!
-
             if (bullet.customColor === enemyBall.customColor) {
-                // Правильный цвет - Взрыв!
+                // Цвета совпали - красивый взрыв!
                 let emitter = particles.createEmitter({
                     speed: { min: 50, max: 150 },
                     scale: { start: 0.15, end: 0 },
@@ -220,7 +231,7 @@
                     setTimeout(showMathQuestion, 300); 
                 }
             } else {
-                // Неправильный цвет - снаряд просто разбивается
+                // Цвета не совпали - снаряд разлетается на мелкие осколки
                 let emitter = particles.createEmitter({
                     speed: 50, scale: { start: 0.05, end: 0 }, tint: 0xffffff, lifespan: 200
                 });
@@ -261,9 +272,8 @@
         function triggerGameOver() {
             isGameOver = true;
             isPaused = true;
-            game.scene.pause('default'); // Останавливаем игру
+            game.scene.pause('default'); 
             
-            // Выводим финальные очки и показываем окно проигрыша
             document.getElementById('final-score').innerText = "Ваш результат: " + score + " очков";
             document.getElementById('game-over-modal').style.display = 'block';
         }
