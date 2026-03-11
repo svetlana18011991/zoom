@@ -54,7 +54,10 @@
 
         const BALL_COLORS = [0xffffff, 0x00ff00, 0x00aaff, 0xffff00];
 
-        let frog, currentAmmo, bullets, enemyBalls, particles;
+        let frog, currentAmmo, bullets, enemyBalls;
+        // Глобальные эмиттеры для оптимизации памяти
+        let particles, goodEmitter, badEmitter; 
+        
         let lastFired = 0, isPaused = false, isGameOver = false, score = 0, scoreText;
         let comboCounter = 0; 
 
@@ -77,7 +80,24 @@
             scoreText = this.add.text(40, 80, 'Очки: 0', { fontSize: '32px', fill: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 });
             scoreText.setDepth(50);
 
+            // ОПТИМИЗАЦИЯ: Создаем эмиттеры один раз при загрузке
             particles = this.add.particles('ball');
+            
+            goodEmitter = particles.createEmitter({
+                speed: { min: 50, max: 150 },
+                scale: { start: 0.15, end: 0 },
+                lifespan: 400,
+                blendMode: 'ADD',
+                on: false // отключен по умолчанию, включаем только при взрыве
+            });
+
+            badEmitter = particles.createEmitter({
+                speed: 50, 
+                scale: { start: 0.05, end: 0 }, 
+                tint: 0xffffff, 
+                lifespan: 200,
+                on: false
+            });
 
             let pathPoints = [
                 1106, 231, 1087, 260, 1050, 318, 1017, 369, 973, 421, 925, 462, 886, 493, 
@@ -145,41 +165,40 @@
         function update() {
             if (isGameOver) return;
 
-            // ПРОВЕРКА ПРОИГРЫША
+            // ПРОВЕРКА ПРОИГРЫША (Оптимизирована математика)
             enemyBalls.children.each(function(b) {
                 if (b.active) {
-                    let distToSun = Phaser.Math.Distance.Between(b.x, b.y, END_X, END_Y);
-                    if (distToSun < 15 && !isGameOver) {
+                    let distSq = Phaser.Math.Distance.BetweenSq(b.x, b.y, END_X, END_Y);
+                    if (distSq < 225 && !isGameOver) { // 225 это 15 в квадрате
                         triggerGameOver();
                     }
                 }
             });
 
-            // ИСПРАВЛЕНИЕ БАГА "НЕВИДИМОЙ СТЕНЫ": Собственная система точных попаданий
+            // ПРОВЕРКА ПОПАДАНИЙ (Оптимизирована математика)
             bullets.children.each(function(bullet) {
                 if (!bullet.active) return;
 
-                // Удаляем пули, улетевшие за край экрана
                 if (bullet.y < 0 || bullet.y > 720 || bullet.x < 0 || bullet.x > 1280) {
                     bullet.setActive(false).setVisible(false).destroy(); 
                     return;
                 }
 
-                // Ищем самый ближайший к снаряду шарик на дорожке
                 let closestBall = null;
-                let minDistance = 100000;
+                let minDistanceSq = 100000;
 
                 enemyBalls.children.each(function(enemyBall) {
                     if (!enemyBall.active) return;
-                    let dist = Phaser.Math.Distance.Between(bullet.x, bullet.y, enemyBall.x, enemyBall.y);
-                    if (dist < minDistance) {
-                        minDistance = dist;
+                    // Используем быструю функцию квадрата дистанции
+                    let distSq = Phaser.Math.Distance.BetweenSq(bullet.x, bullet.y, enemyBall.x, enemyBall.y);
+                    if (distSq < minDistanceSq) {
+                        minDistanceSq = distSq;
                         closestBall = enemyBall;
                     }
                 });
 
-                // Если снаряд подобрался к ближайшему шарику ближе чем на 35 пикселей - БИНГО!
-                if (closestBall && minDistance <= 35) {
+                // 1225 - это 35 пикселей в квадрате. Если ближе 35px - попадание!
+                if (closestBall && minDistanceSq <= 1225) {
                     hitBall(bullet, closestBall);
                 }
             });
@@ -209,15 +228,9 @@
 
         function hitBall(bullet, enemyBall) {
             if (bullet.customColor === enemyBall.customColor) {
-                // Цвета совпали - красивый взрыв!
-                let emitter = particles.createEmitter({
-                    speed: { min: 50, max: 150 },
-                    scale: { start: 0.15, end: 0 },
-                    tint: bullet.customColor, 
-                    lifespan: 400,
-                    blendMode: 'ADD'
-                });
-                emitter.explode(15, enemyBall.x, enemyBall.y);
+                // ОПТИМИЗАЦИЯ: Используем заранее созданный эмиттер
+                goodEmitter.setTint(bullet.customColor);
+                goodEmitter.explode(15, enemyBall.x, enemyBall.y);
 
                 bullet.destroy(); 
                 enemyBall.destroy(); 
@@ -231,11 +244,8 @@
                     setTimeout(showMathQuestion, 300); 
                 }
             } else {
-                // Цвета не совпали - снаряд разлетается на мелкие осколки
-                let emitter = particles.createEmitter({
-                    speed: 50, scale: { start: 0.05, end: 0 }, tint: 0xffffff, lifespan: 200
-                });
-                emitter.explode(5, bullet.x, bullet.y);
+                // ОПТИМИЗАЦИЯ: Используем заранее созданный эмиттер
+                badEmitter.explode(5, bullet.x, bullet.y);
                 bullet.destroy();
             }
         }
